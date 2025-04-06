@@ -9,6 +9,7 @@ const ChessGame = () => {
     const [game, setGame] = useState(new Chess());
     const [room, setRoom] = useState("");
     const [playerColor, setPlayerColor] = useState(null); // Track player color
+    const username = localStorage.getItem("username"); // ✅ fetch username
 
     useEffect(() => {
         socket.on("gameState", ({ fen, turn }) => {
@@ -53,11 +54,21 @@ const ChessGame = () => {
     
     
 
+    // const joinRoom = () => {
+    //     if (room) {
+    //         socket.emit("joinGame", room);
+    //     }
+    // };
     const joinRoom = () => {
-        if (room) {
-            socket.emit("joinGame", room);
+        const userId = localStorage.getItem("userId"); // ✅ Get logged-in user ID
+        const username = localStorage.getItem("username"); // ✅ Get username
+        if (room && userId && username) {
+            socket.emit("joinGame", { room, userId, username }); // ✅ send username
+        } else {
+            alert("User not logged in or Room ID missing.");
         }
     };
+    
 
     const onDrop = (sourceSquare, targetSquare) => {
         try {
