@@ -10,7 +10,7 @@ const GameOver = () => {
         <div style={{ textAlign: "center", padding: "50px" }}>
             <h1>Game Over</h1>
             <h2>{winner ? `${winner} Wins! 🎉` : "It's a Draw! 🤝"}</h2>
-            <button onClick={() => navigate("/")}>Return to Home</button>
+            <button onClick={() => navigate("/dashboard")}>Return to Home</button>
         </div>
     );
 };
