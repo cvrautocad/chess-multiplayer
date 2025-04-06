@@ -38,64 +38,155 @@ let games = {}; // Store active games
 io.on("connection", (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    socket.on("joinGame", (room) => {
+    // socket.on("joinGame", (room) => {
+    //     socket.join(room);
+    //     if (!games[room]) {
+    //         games[room] = { game: new Chess(), players: [] };
+    //     }
+
+    //     const roomData = games[room];
+    //     if (roomData.players.length < 2) {
+    //         const assignedColor = roomData.players.length === 0 ? "w" : "b";
+    //         roomData.players.push({ id: socket.id, color: assignedColor });
+
+    //         socket.emit("assignColor", assignedColor);
+    //         console.log(`Player ${socket.id} assigned color: ${assignedColor}`);
+    //     }
+
+    //     io.to(room).emit("gameState", {
+    //         fen: roomData.game.fen(),
+    //         turn: roomData.game.turn(),
+    //     });
+    // });
+    socket.on("joinGame", ({ room, userId, username }) => {
         socket.join(room);
+    
         if (!games[room]) {
-            games[room] = { game: new Chess(), players: [] };
+            games[room] = {
+                game: new Chess(),
+                players: [],
+                hasUpdatedStats: false // 💡 Prevent double update
+            };
         }
-
+    
         const roomData = games[room];
-        if (roomData.players.length < 2) {
-            const assignedColor = roomData.players.length === 0 ? "w" : "b";
-            roomData.players.push({ id: socket.id, color: assignedColor });
+        const assignedColor = roomData.players.length === 0 ? "w" : "b";
+    
+        // roomData.players.push({ id: socket.id, userId, color: assignedColor });
+        roomData.players.push({
+            id: socket.id,
+            userId,
+            username, // ✅ this line is new
+            color: assignedColor
+        });
 
-            socket.emit("assignColor", assignedColor);
-            console.log(`Player ${socket.id} assigned color: ${assignedColor}`);
-        }
-
+        socket.emit("assignColor", assignedColor);
         io.to(room).emit("gameState", {
             fen: roomData.game.fen(),
             turn: roomData.game.turn(),
         });
     });
+    
 
-    socket.on("makeMove", ({ room, move }) => {
+    // socket.on("makeMove", ({ room, move }) => {
+    //     try {
+    //         const roomData = games[room];
+    //         if (!roomData) {
+    //             console.error(`No game found for room: ${room}`);
+    //             return;
+    //         }
+    
+    //         const game = roomData.game;
+    //         const validMove = game.move(move);
+    
+    //         if (!validMove) {
+    //             console.warn(`Invalid move attempted in room ${room}:`, move);
+    //             return;
+    //         }
+    
+    //         // Send new game state and turn
+    //         io.to(room).emit("gameState", {
+    //             fen: game.fen(),
+    //             turn: game.turn(),
+    //         });
+    
+    //         // Check game over conditions
+    //         if (game.isCheckmate()) {
+    //             const winner = game.turn() === "w" ? "Black" : "White"; // Opponent wins
+    //             io.to(room).emit("gameOver", { message: `Checkmate! ${winner} wins.`, winner });
+    //         } else if (game.isStalemate()) {
+    //             io.to(room).emit("gameOver", { message: "Stalemate! Game drawn.", winner: "draw" });
+    //         } else if (game.isDraw()) {
+    //             io.to(room).emit("gameOver", { message: "Draw! Game over.", winner: "draw" });
+    //         } else if (game.isCheck()) {
+    //             io.to(room).emit("checkAlert", "Check! Your king is under attack.");
+    //         }
+    //     } catch (error) {
+    //         console.error("Error processing move:", error);
+    //     }
+    // });
+    socket.on("makeMove", async ({ room, move }) => {
         try {
             const roomData = games[room];
-            if (!roomData) {
-                console.error(`No game found for room: ${room}`);
-                return;
-            }
+            if (!roomData) return;
     
             const game = roomData.game;
             const validMove = game.move(move);
+            if (!validMove) return;
     
-            if (!validMove) {
-                console.warn(`Invalid move attempted in room ${room}:`, move);
-                return;
-            }
-    
-            // Send new game state and turn
             io.to(room).emit("gameState", {
                 fen: game.fen(),
                 turn: game.turn(),
             });
     
-            // Check game over conditions
-            if (game.isCheckmate()) {
-                const winner = game.turn() === "w" ? "Black" : "White"; // Opponent wins
-                io.to(room).emit("gameOver", { message: `Checkmate! ${winner} wins.`, winner });
-            } else if (game.isStalemate()) {
-                io.to(room).emit("gameOver", { message: "Stalemate! Game drawn.", winner: "draw" });
-            } else if (game.isDraw()) {
-                io.to(room).emit("gameOver", { message: "Draw! Game over.", winner: "draw" });
-            } else if (game.isCheck()) {
-                io.to(room).emit("checkAlert", "Check! Your king is under attack.");
+            const players = roomData.players;
+    
+            if (!roomData.hasUpdatedStats) {
+                // ✅ Handle game-over scenarios
+                if (game.isCheckmate()) {
+                    const winnerColor = game.turn() === "w" ? "b" : "w"; // Opponent wins
+                    const winner = players.find(p => p.color === winnerColor);
+                    const loser = players.find(p => p.color !== winnerColor);
+    
+                    if (winner && loser) {
+                        await User.findByIdAndUpdate(winner.userId, {
+                            $inc: { matchesPlayed: 1, matchesWon: 1 }
+                        });
+                        await User.findByIdAndUpdate(loser.userId, {
+                            $inc: { matchesPlayed: 1, matchesLost: 1 }
+                        });
+                    }
+    
+                    roomData.hasUpdatedStats = true;
+                    // io.to(room).emit("gameOver", { message: `Checkmate! ${winnerColor === "w" ? "White" : "Black"} wins.`, winner: winnerColor === "w" ? "White" : "Black" });
+                    io.to(room).emit("gameOver", { 
+                        message: `Checkmate! ${winner.username} wins.`, 
+                        winner: winner.username 
+                    });
+                    
+    
+                } else if (game.isStalemate() || game.isDraw()) {
+                    for (const p of players) {
+                        await User.findByIdAndUpdate(p.userId, {
+                            $inc: { matchesPlayed: 1 }
+                        });
+                    }
+    
+                    roomData.hasUpdatedStats = true;
+                    io.to(room).emit("gameOver", {
+                        message: game.isStalemate() ? "Stalemate! Game drawn." : "Draw! Game over.",
+                        winner: "draw"
+                    });
+                } else if (game.isCheck()) {
+                    io.to(room).emit("checkAlert", "Check! Your king is under attack.");
+                }
             }
+    
         } catch (error) {
             console.error("Error processing move:", error);
         }
     });
+    
     
     // adding chat system code
     let users = {};
@@ -319,5 +410,55 @@ app.get("/api/messages/:userId/:selectedUser", async (req, res) => {
         res.status(500).json({ error: "Error fetching messages" });
     }
 });
+////////////
+////////////
+    // Fetch User Profile
+    app.get("/api/profile/:id", async (req, res) => {
+        try {
+            const user = await User.findById(req.params.id).select("-password");
+            if (!user) return res.status(404).json({ message: "User not found" });
+            res.json(user);
+        } catch (err) {
+            console.error("Error fetching profile:", err);
+            res.status(500).json({ message: "Server error" });
+        }
+    });
+
+    // Update Match Stats (matchesPlayed, matchesWon, matchesLost)
+    app.put("/api/profile/update-stats/:id", async (req, res) => {
+        const { matchesPlayed, matchesWon, matchesLost } = req.body;
+        try {
+            const updatedUser = await User.findByIdAndUpdate(
+                req.params.id,
+                { matchesPlayed, matchesWon, matchesLost },
+                { new: true }
+            );
+            res.json(updatedUser);
+        } catch (err) {
+            console.error("Error updating stats:", err);
+            res.status(500).json({ message: "Server error" });
+        }
+    });
+    app.post('/api/profile/update-result/:id', async (req, res) => {
+        const { result } = req.body;
+    
+        try {
+            const user = await User.findById(req.params.id);
+            if (!user) return res.status(404).json({ message: "User not found" });
+    
+            user.matchesPlayed += 1;
+            if (result === "win") user.matchesWon += 1;
+            else if (result === "loss") user.matchesLost += 1;
+            // you can also support "draw" if needed
+    
+            await user.save();
+            res.json({ message: "Stats updated successfully", user });
+        } catch (error) {
+            console.error("Error updating stats:", error);
+            res.status(500).json({ message: "Server error" });
+        }
+    });
+    
+
 ////////////
 server.listen(5000, () => console.log("Server running on port 5000"));
