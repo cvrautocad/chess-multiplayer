@@ -15,17 +15,19 @@ const Login = () => {
         e.preventDefault();
         try {
             const res = await axios.post("http://localhost:5000/login", formData);
-            
-            // Store token and userId in localStorage
+    
+            // Store token, userId, and username in localStorage
             localStorage.setItem("token", res.data.token);
-            localStorage.setItem("userId", res.data.userId);  // Store userId for chat system
-
+            localStorage.setItem("userId", res.data.userId);
+            localStorage.setItem("username", res.data.username);  // 👈 Add this line
+    
             alert("Login Successful");
             navigate("/dashboard");
         } catch (err) {
             setError(err.response?.data?.message || "Login failed");
         }
     };
+    
 
     return (
         <div>
@@ -42,3 +44,4 @@ const Login = () => {
 };
 
 export default Login;
+
