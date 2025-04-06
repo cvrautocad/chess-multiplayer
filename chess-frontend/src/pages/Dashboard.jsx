@@ -8,6 +8,7 @@ const Dashboard = () => {
             <h2>Welcome to the Dashboard</h2>
             <button onClick={() => navigate("/")}>Start Game</button>
             <button onClick={() => navigate("/chat")}>Go to Chat</button>
+            <button onClick={() => navigate("/profile")}>Profile</button>
         </div>
     );
 };
